@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  taco-smart-wallet-bot:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      # Flask configuration
+      - FLASK_ENV=production
+      - FLASK_APP=app.py
+      
+      # TACo Smart Wallet configuration
+      - PIMLICO_API_KEY=${PIMLICO_API_KEY}
+      - DISCORD_BOT_PUBLIC_KEY=${DISCORD_BOT_PUBLIC_KEY}
+    restart: unless-stopped
