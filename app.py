@@ -85,11 +85,11 @@ def extract_user_id(payload: Dict[str, Any]) -> str:
     # Try guild interactions first
     if "member" in payload and "user" in payload["member"]:
         return payload["member"]["user"]["id"]
-    
+
     # Try DM interactions
     if "user" in payload:
         return payload["user"]["id"]
-    
+
     raise Exception("Missing user ID in Discord interaction")
 
 
@@ -135,7 +135,6 @@ class DiscordInteractionHandler:
 
     def __init__(self):
         self.app = Flask(__name__)
-        self.taco_service = TacoSmartWalletService(SmartAccountConfig())
         self._setup_routes()
 
     def _setup_routes(self) -> None:
@@ -144,7 +143,7 @@ class DiscordInteractionHandler:
         self.app.route("/health", methods=["GET"])(self.health_check)
 
     def _handle_tip(
-        self, user_id: str, amount: str, recipient: str, interaction_token: str, 
+        self, user_id: str, amount: str, recipient: str, interaction_token: str,
         application_id: str, body: str, timestamp: int, signature: str
     ) -> None:
         """Handle ETH tip operation for a specific user"""
@@ -157,20 +156,20 @@ class DiscordInteractionHandler:
         try:
             # Set Discord context for TACo signatures
             self._set_discord_context(timestamp, body, signature, user_id, amount, recipient)
-            
+
             # Execute ETH transfer
             result = self._execute_eth_transfer(user_id, tip_data)
-            
+
             # Format and send response
             content = self._format_tip_response(result, tip_data, user_id)
-            
+
         except Exception as e:
             logger.error(f"TACo tip error for user {user_id}: {e}")
             content = self._format_error_response(e)
 
         send_discord_response(application_id, interaction_token, content)
-    
-    def _set_discord_context(self, timestamp: int, body: str, signature: str, 
+
+    def _set_discord_context(self, timestamp: int, body: str, signature: str,
                            user_id: str, amount: str, recipient: str) -> None:
         """Set Discord context for TACo signatures"""
         discord_context = {
@@ -185,7 +184,7 @@ class DiscordInteractionHandler:
         }
         threading.current_thread().discord_context = discord_context
         logger.info(f"Set Discord context for TACo: tip {amount} ETH to {recipient}")
-    
+
     def _execute_eth_transfer(self, user_id: str, tip_data: Dict[str, Any]) -> Dict[str, Any]:
         """Execute ETH transfer using TACo threshold signatures"""
         try:
@@ -193,15 +192,18 @@ class DiscordInteractionHandler:
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-        
+
+        # Create user-specific TACo service
+        taco_service = TacoSmartWalletService.for_user(user_id)
+
         return loop.run_until_complete(
-            self.taco_service.send_eth(
+            taco_service.send_eth(
                 user_id=user_id,
                 recipient=tip_data['recipient_address'],
                 amount_eth=float(tip_data['amount'])
             )
         )
-    
+
     def _format_tip_response(self, result: Dict[str, Any], tip_data: Dict[str, Any], user_id: str) -> str:
         """Format tip response message"""
         if result.get('success', False):
@@ -224,7 +226,7 @@ class DiscordInteractionHandler:
                 f"Error: `{result.get('error', 'Unknown error')}`\n"
                 f"Status: `{result['status']}`"
             )
-    
+
     def _format_error_response(self, error: Exception) -> str:
         """Format error response message"""
         if 'decryption conditions not satisfied' in str(error).lower():
@@ -264,24 +266,62 @@ class DiscordInteractionHandler:
         """Handle Discord slash commands"""
         data = payload.get("data", {})
         command_name = data.get("name")
-        
-        if command_name != "tip":
-            return "", 204
 
-        # Extract parameters
-        user_id = extract_user_id(payload)
-        options = data.get("options", [])
-        amount = next((opt["value"] for opt in options if opt["name"] == "amount"), "")
-        recipient = next((opt["value"] for opt in options if opt["name"] == "recipient"), "")
-        
-        # Handle tip in background thread
-        threading.Thread(
-            target=self._handle_tip,
-            args=(user_id, amount, recipient, payload["token"], payload["application_id"], 
-                  body, timestamp, signature)
-        ).start()
-        
-        return jsonify({"type": DISCORD_DEFERRED_RESPONSE_TYPE})
+        if command_name == "tip":
+            # Extract parameters
+            user_id = extract_user_id(payload)
+            options = data.get("options", [])
+            amount = next((opt["value"] for opt in options if opt["name"] == "amount"), "")
+            recipient = next((opt["value"] for opt in options if opt["name"] == "recipient"), "")
+
+            # Handle tip in background thread
+            threading.Thread(
+                target=self._handle_tip,
+                args=(user_id, amount, recipient, payload["token"], payload["application_id"],
+                      body, timestamp, signature)
+            ).start()
+
+            return jsonify({"type": DISCORD_DEFERRED_RESPONSE_TYPE})
+
+        elif command_name == "address":
+            # Extract user parameter
+            options = data.get("options", [])
+            target_user = next((opt["value"] for opt in options if opt["name"] == "user"), "")
+
+            # Handle address command in background thread
+            threading.Thread(
+                target=self._handle_address,
+                args=(payload["token"], payload["application_id"], target_user)
+            ).start()
+
+            return jsonify({"type": DISCORD_DEFERRED_RESPONSE_TYPE})
+
+        return "", 204
+
+    def _handle_address(self, interaction_token: str, application_id: str, target_user: str) -> None:
+        """Handle /address command to get smart account address for a user"""
+        try:
+            content = self._generate_address_info(target_user)
+        except Exception as e:
+            content = "❌ **Error getting address**\nPlease try again later."
+
+        send_discord_response(application_id, interaction_token, content)
+
+    def _generate_address_info(self, target_user: str) -> str:
+        """Generate address information for a specific user"""
+        from config import compute_smart_account_address, SMART_ACCOUNT_FACTORY
+
+        if not target_user:
+            return "❌ **No user specified**\nPlease mention a user with the command."
+
+        try:
+            # Generate the smart account address for this user
+            address = compute_smart_account_address(target_user)
+
+            return f"<@{target_user}> smart account: `{address}`"
+
+        except Exception as e:
+            return f"❌ **Error computing address**\nFailed to generate address for user {target_user}"
 
     def health_check(self):
         """Dead-simple health check endpoint"""
