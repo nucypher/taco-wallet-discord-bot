@@ -12,18 +12,22 @@ ENTRYPOINT_V07 = "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
 
 # Smart Account Factory - Standard Infinitism SimpleAccountFactory
 # This is the canonical ERC-4337 SimpleAccountFactory deployed on most networks
-SMART_ACCOUNT_FACTORY = "0x9406Cc6185a346906296840746125a0E44976454"  # Infinitism SimpleAccountFactory
+SMART_ACCOUNT_FACTORY = (
+    "0x9406Cc6185a346906296840746125a0E44976454"  # Infinitism SimpleAccountFactory
+)
 
 # Default gas limits for UserOperations
 DEFAULT_GAS_LIMITS = {
     "call": 300000,
     "verification": 1000000,
     "pre_verification": 60000,
-    "fee": 1100000
+    "fee": 1100000,
 }
 
 
-def compute_smart_account_address(user_id: str, factory_address: str = SMART_ACCOUNT_FACTORY) -> str:
+def compute_smart_account_address(
+    user_id: str, factory_address: str = SMART_ACCOUNT_FACTORY
+) -> str:
     """
     Compute deterministic smart account address using user ID as salt
 
@@ -34,7 +38,7 @@ def compute_smart_account_address(user_id: str, factory_address: str = SMART_ACC
     """
     # Convert user_id to a 32-byte salt (pad with zeros)
     user_id_int = int(user_id)
-    salt = user_id_int.to_bytes(32, byteorder='big')
+    salt = user_id_int.to_bytes(32, byteorder="big")
 
     # For now, return a deterministic address based on user_id
     # In production, this should use the actual factory contract and CREATE2
@@ -47,7 +51,7 @@ def compute_smart_account_address(user_id: str, factory_address: str = SMART_ACC
     address_hash = Web3.keccak(combined)
 
     # Take last 20 bytes as address
-    address = '0x' + address_hash.hex()[-40:]
+    address = "0x" + address_hash.hex()[-40:]
     return Web3.to_checksum_address(address)
 
 
@@ -78,7 +82,9 @@ class SmartAccountConfig:
         self.cohort_id = 2
 
         # Bundler configuration
-        pimlico_api_key = os.environ.get('PIMLICO_API_KEY')
+        pimlico_api_key = os.environ.get("PIMLICO_API_KEY")
         if not pimlico_api_key:
             raise ValueError("PIMLICO_API_KEY environment variable is required")
-        self.bundler_url = f"https://api.pimlico.io/v2/base-sepolia/rpc?apikey={pimlico_api_key}"
+        self.bundler_url = (
+            f"https://api.pimlico.io/v2/base-sepolia/rpc?apikey={pimlico_api_key}"
+        )

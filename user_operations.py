@@ -16,27 +16,24 @@ EXECUTE_SELECTOR = Web3.keccak(text="execute((address,uint256,bytes))")[:4]
 
 
 def create_eth_transfer_user_operation(
-    smart_account: str, 
-    to_address: str, 
-    amount_wei: int, 
-    nonce: int
+    smart_account: str, to_address: str, amount_wei: int, nonce: int
 ) -> UserOperation:
     """Create ETH transfer UserOperation using tuple-based execute function"""
-    
+
     # Encode execute((address,uint256,bytes)) call
     encoded_params = encode(
-        ['(address,uint256,bytes)'], 
-        [(Web3.to_checksum_address(to_address), amount_wei, b'')]
+        ["(address,uint256,bytes)"],
+        [(Web3.to_checksum_address(to_address), amount_wei, b"")],
     )
     calldata = EXECUTE_SELECTOR + encoded_params
-    
+
     logger.info(f"Created ETH transfer: {amount_wei} wei to {to_address}")
-    
+
     return UserOperation(
         sender=smart_account,
         nonce=nonce,
         factory=None,
-        factory_data=b'',
+        factory_data=b"",
         call_data=calldata,
         call_gas_limit=DEFAULT_GAS_LIMITS["call"],
         verification_gas_limit=DEFAULT_GAS_LIMITS["verification"],
@@ -46,6 +43,6 @@ def create_eth_transfer_user_operation(
         paymaster=None,
         paymaster_verification_gas_limit=0,
         paymaster_post_op_gas_limit=0,
-        paymaster_data=b'',
-        signature=b''
-    ) 
+        paymaster_data=b"",
+        signature=b"",
+    )
