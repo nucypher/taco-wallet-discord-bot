@@ -6,4 +6,5 @@ eth_abi>=4.2.0
 requests>=2.31.0
 
 # NuCypher pinned to specific git commit for Porter compatibility
-git+https://github.com/nucypher/nucypher.git@227463d
+git+https://github.com/nucypher/nucypher.git@3e119d2
+
