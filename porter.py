@@ -16,6 +16,7 @@ from nucypher.network.signing import (
 )
 
 from config import SmartAccountConfig
+from hexbytes import HexBytes
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class PorterSignatureService:
         # Get Discord context for Porter
         discord_context = self._get_discord_context()
         porter_context = {
-            ":message": discord_context['message_hex'],
+            ":message": HexBytes(discord_context['message_hex']).hex(),
             ":signature": discord_context['signature']
         }
         

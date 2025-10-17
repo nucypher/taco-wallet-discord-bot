@@ -63,9 +63,6 @@ def send_discord_response(app_id: str, token: str, content: str) -> None:
         logger.error(f"Failed to send Discord response: {e}")
 
 
-
-
-
 def verify_discord_signature(signature: str, timestamp: str, body: str) -> None:
     """Verify Discord request signature"""
     try:
