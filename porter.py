@@ -34,9 +34,11 @@ class PorterSignatureService:
         
         # Get Discord context for Porter
         discord_context = self._get_discord_context()
+        message_hex = HexBytes(discord_context['message_hex']).hex()
         porter_context = {
-            ":message": HexBytes(discord_context['message_hex']).hex(),
-            ":signature": discord_context['signature']
+            ":message": message_hex,
+            ":signature": discord_context['signature'],
+            ":discordPayload": discord_context["body"]
         }
         
         # Create signing request
@@ -47,7 +49,7 @@ class PorterSignatureService:
             aa_version=AAVersion.MDT,
             context=porter_context
         )
-        
+
         # Get signatures from Porter
         signatures = await self._request_signatures(signing_request)
         
