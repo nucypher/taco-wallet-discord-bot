@@ -13,4 +13,5 @@ services:
       # TACo Smart Wallet configuration
       - PIMLICO_API_KEY=${PIMLICO_API_KEY}
       - DISCORD_BOT_PUBLIC_KEY=${DISCORD_BOT_PUBLIC_KEY}
+      - COHORT_ID=${COHORT_ID}
     restart: unless-stopped
