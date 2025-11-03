@@ -30,7 +30,7 @@ class SmartAccountConfig:
         
         # TACo network configuration (via Porter gateway)
         self.porter_url = "https://porter-lynx.nucypher.io"
-        self.cohort_id = os.environ.get('COHORT_ID')
+        self.cohort_id = int(os.environ.get('COHORT_ID'))
         
         # Bundler configuration
         pimlico_api_key = os.environ.get('PIMLICO_API_KEY')
