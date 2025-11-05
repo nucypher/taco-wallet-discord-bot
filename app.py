@@ -10,12 +10,9 @@ A clean Discord bot implementation that demonstrates:
 
 import logging
 import os
-import threading
 import re
-import asyncio
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
-import requests
 from flask import Flask, request, jsonify, abort
 from nacl.exceptions import BadSignatureError
 from nacl.signing import VerifyKey
@@ -28,21 +25,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Constants
-DISCORD_WEBHOOK_BASE_URL = "https://discord.com/api/v10/webhooks"
 DISCORD_SIGNATURE_HEADER = "X-Signature-Ed25519"
 DISCORD_TIMESTAMP_HEADER = "X-Signature-Timestamp"
 
 # Discord interaction types
 DISCORD_PING_TYPE = 1
 DISCORD_COMMAND_TYPE = 2
-DISCORD_DEFERRED_RESPONSE_TYPE = 5
 
 # Server defaults
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8080
-
-
-
 
 
 def get_discord_public_key() -> str:
@@ -51,16 +43,6 @@ def get_discord_public_key() -> str:
     if not key:
         raise ValueError("DISCORD_BOT_PUBLIC_KEY environment variable is required")
     return key
-
-
-def send_discord_response(app_id: str, token: str, content: str) -> None:
-    """Send a response back to Discord"""
-    try:
-        url = f"{DISCORD_WEBHOOK_BASE_URL}/{app_id}/{token}"
-        response = requests.post(url, json={"content": content}, timeout=30)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        logger.error(f"Failed to send Discord response: {e}")
 
 
 def verify_discord_signature(signature: str, timestamp: str, body: str) -> None:
@@ -82,11 +64,11 @@ def extract_user_id(payload: Dict[str, Any]) -> str:
     # Try guild interactions first
     if "member" in payload and "user" in payload["member"]:
         return payload["member"]["user"]["id"]
-    
+
     # Try DM interactions
     if "user" in payload:
         return payload["user"]["id"]
-    
+
     raise Exception("Missing user ID in Discord interaction")
 
 
@@ -141,35 +123,31 @@ class DiscordInteractionHandler:
         self.app.route("/health", methods=["GET"])(self.health_check)
 
     def _handle_tip(
-        self, user_id: str, amount: str, recipient: str, interaction_token: str, 
-        application_id: str, body: str, timestamp: int, signature: str
-    ) -> None:
+        self, user_id: str, amount: str, recipient: str, body: str, timestamp: str, signature: str
+    ) -> str:
         """Handle ETH tip operation for a specific user"""
         # Parse and validate request
         tip_data = parse_tip_request(amount, recipient)
         if "error" in tip_data:
-            send_discord_response(application_id, interaction_token, tip_data["error"])
-            return
+            return tip_data["error"]
 
         try:
-            # Set Discord context for TACo signatures
-            self._set_discord_context(timestamp, body, signature, user_id, amount, recipient)
-            
+            # Create Discord context for TACo signatures
+            discord_context = self._create_discord_context(timestamp, body, signature, user_id, amount, recipient)
+
             # Execute ETH transfer
-            result = self._execute_eth_transfer(user_id, tip_data)
-            
-            # Format and send response
-            content = self._format_tip_response(result, tip_data, user_id)
-            
+            result = self._execute_eth_transfer(user_id, tip_data, discord_context)
+
+            # Format and return response
+            return self._format_tip_response(result, tip_data, user_id)
+
         except Exception as e:
             logger.error(f"TACo tip error for user {user_id}: {e}")
-            content = self._format_error_response(e)
+            return self._format_error_response(e)
 
-        send_discord_response(application_id, interaction_token, content)
-    
-    def _set_discord_context(self, timestamp: int, body: str, signature: str, 
-                           user_id: str, amount: str, recipient: str) -> None:
-        """Set Discord context for TACo signatures"""
+    def _create_discord_context(self, timestamp: str, body: str, signature: str,
+                           user_id: str, amount: str, recipient: str) -> Dict[str, Any]:
+        """Create Discord context for TACo signatures"""
         discord_context = {
             'message_hex': f"{timestamp}{body}".encode("utf-8").hex(),
             'signature': signature,
@@ -180,25 +158,18 @@ class DiscordInteractionHandler:
             'amount': amount,
             'recipient': recipient
         }
-        threading.current_thread().discord_context = discord_context
-        logger.info(f"Set Discord context for TACo: tip {amount} ETH to {recipient}")
-    
-    def _execute_eth_transfer(self, user_id: str, tip_data: Dict[str, Any]) -> Dict[str, Any]:
+        logger.info(f"Created Discord context for TACo: tip {amount} ETH to {recipient}")
+        return discord_context
+
+    def _execute_eth_transfer(self, user_id: str, tip_data: Dict[str, Any], discord_context: Dict[str, Any]) -> Dict[str, Any]:
         """Execute ETH transfer using TACo threshold signatures"""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        return loop.run_until_complete(
-            self.taco_service.send_eth(
-                user_id=user_id,
-                recipient=tip_data['recipient_address'],
-                amount_eth=float(tip_data['amount'])
-            )
+        return self.taco_service.send_eth(
+            user_id=user_id,
+            recipient=tip_data['recipient_address'],
+            amount_eth=float(tip_data['amount']),
+            discord_context=discord_context
         )
-    
+
     def _format_tip_response(self, result: Dict[str, Any], tip_data: Dict[str, Any], user_id: str) -> str:
         """Format tip response message"""
         if result.get('success', False):
@@ -221,7 +192,7 @@ class DiscordInteractionHandler:
                 f"Error: `{result.get('error', 'Unknown error')}`\n"
                 f"Status: `{result['status']}`"
             )
-    
+
     def _format_error_response(self, error: Exception) -> str:
         """Format error response message"""
         if 'decryption conditions not satisfied' in str(error).lower():
@@ -261,7 +232,7 @@ class DiscordInteractionHandler:
         """Handle Discord slash commands"""
         data = payload.get("data", {})
         command_name = data.get("name")
-        
+
         if command_name != "tip":
             return "", 204
 
@@ -270,15 +241,17 @@ class DiscordInteractionHandler:
         options = data.get("options", [])
         amount = next((opt["value"] for opt in options if opt["name"] == "amount"), "")
         recipient = next((opt["value"] for opt in options if opt["name"] == "recipient"), "")
-        
-        # Handle tip in background thread
-        threading.Thread(
-            target=self._handle_tip,
-            args=(user_id, amount, recipient, payload["token"], payload["application_id"], 
-                  body, timestamp, signature)
-        ).start()
-        
-        return jsonify({"type": DISCORD_DEFERRED_RESPONSE_TYPE})
+
+        # Handle tip and get response
+        content = self._handle_tip(
+            user_id, amount, recipient, body, timestamp, signature
+        )
+
+        # Return response directly
+        return jsonify({
+            "type": 4,  # CHANNEL_MESSAGE_WITH_SOURCE
+            "data": {"content": content}
+        })
 
     def health_check(self):
         """Dead-simple health check endpoint"""
