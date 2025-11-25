@@ -3,13 +3,21 @@ UserOperation creation utilities for TACo Smart Wallets
 """
 
 import logging
+from dataclasses import dataclass
 from web3 import Web3
 from eth_abi import encode
-from nucypher.network.signing import UserOperation
+from nucypher_core import UserOperation
 
 from config import DEFAULT_GAS_LIMITS
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SignedUserOperation:
+    """Wrapper holding a UserOperation and its signature"""
+    user_operation: UserOperation
+    signature: bytes
 
 # Function selector for execute((address,uint256,bytes))
 EXECUTE_SELECTOR = Web3.keccak(text="execute((address,uint256,bytes))")[:4]
@@ -47,5 +55,4 @@ def create_eth_transfer_user_operation(
         paymaster_verification_gas_limit=0,
         paymaster_post_op_gas_limit=0,
         paymaster_data=b'',
-        signature=b''
     ) 

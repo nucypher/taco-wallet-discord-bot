@@ -3,66 +3,70 @@ Pimlico bundler integration and format conversion utilities for TACo smart walle
 """
 
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 import requests
-from nucypher.network.signing import UserOperation
+from nucypher_core import UserOperation
 
 from config import SmartAccountConfig
+from user_operations import SignedUserOperation
 
 logger = logging.getLogger(__name__)
 
-# Field mappings for NuCypher -> Pimlico conversion
-FIELD_MAPPINGS = {
-    "sender": "sender",
-    "nonce": ("nonce", hex),
-    "call_data": "callData", 
-    "call_gas_limit": ("callGasLimit", hex),
-    "verification_gas_limit": ("verificationGasLimit", hex),
-    "pre_verification_gas": ("preVerificationGas", hex),
-    "max_fee_per_gas": ("maxFeePerGas", hex),
-    "max_priority_fee_per_gas": ("maxPriorityFeePerGas", hex),
-    "signature": "signature"
-}
 
-
-def convert_user_operation_to_pimlico_format(user_operation: UserOperation) -> Dict:
+def convert_user_operation_to_pimlico_format(
+    user_op: Union[UserOperation, SignedUserOperation],
+    signature: bytes = None
+) -> Dict:
     """Convert NuCypher UserOperation to Pimlico bundler format (EntryPoint v0.7)"""
-    nucypher_dict = user_operation.to_dict()
-    pimlico_dict = {}
-    
-    # Map basic fields
-    for nucypher_field, pimlico_mapping in FIELD_MAPPINGS.items():
-        value = nucypher_dict[nucypher_field]
-        if isinstance(pimlico_mapping, tuple):
-            pimlico_field, converter = pimlico_mapping
-            pimlico_dict[pimlico_field] = converter(value)
-        else:
-            pimlico_dict[pimlico_mapping] = value
-    
+    # Handle SignedUserOperation wrapper
+    if isinstance(user_op, SignedUserOperation):
+        op = user_op.user_operation
+        signature = user_op.signature
+    else:
+        op = user_op
+
+    # Build pimlico dict from direct attribute access
+    pimlico_dict = {
+        "sender": op.sender,
+        "nonce": hex(op.nonce),
+        "callData": "0x" + op.call_data.hex() if isinstance(op.call_data, bytes) else op.call_data,
+        "callGasLimit": hex(op.call_gas_limit),
+        "verificationGasLimit": hex(op.verification_gas_limit),
+        "preVerificationGas": hex(op.pre_verification_gas),
+        "maxFeePerGas": hex(op.max_fee_per_gas),
+        "maxPriorityFeePerGas": hex(op.max_priority_fee_per_gas),
+    }
+
+    # Add signature
+    if signature:
+        pimlico_dict["signature"] = "0x" + signature.hex() if isinstance(signature, bytes) else signature
+    else:
+        pimlico_dict["signature"] = "0x"
+
     # Handle optional factory fields
-    factory = nucypher_dict["factory"]
+    factory = op.factory
     pimlico_dict.update({
         "factory": factory,
-        "factoryData": nucypher_dict["factory_data"] if factory else None
+        "factoryData": "0x" + op.factory_data.hex() if factory and op.factory_data else None
     })
-    
-    # Handle optional paymaster fields  
-    paymaster = nucypher_dict["paymaster"]
+
+    # Handle optional paymaster fields
+    paymaster = op.paymaster
     if paymaster:
         pimlico_dict.update({
             "paymaster": paymaster,
-            "paymasterVerificationGasLimit": hex(nucypher_dict["paymaster_verification_gas_limit"]),
-            "paymasterPostOpGasLimit": hex(nucypher_dict["paymaster_post_op_gas_limit"]),
-            "paymasterData": nucypher_dict["paymaster_data"]
+            "paymasterVerificationGasLimit": hex(op.paymaster_verification_gas_limit),
+            "paymasterPostOpGasLimit": hex(op.paymaster_post_op_gas_limit),
+            "paymasterData": "0x" + op.paymaster_data.hex() if op.paymaster_data else "0x"
         })
     else:
         pimlico_dict.update({
             "paymaster": None,
-            "paymasterVerificationGasLimit": None, 
+            "paymasterVerificationGasLimit": None,
             "paymasterPostOpGasLimit": None,
             "paymasterData": None
         })
-    
+
     return pimlico_dict
 
 
@@ -83,11 +87,12 @@ class BundlerClient:
         """Get current gas prices from Pimlico"""
         return self._make_bundler_request("pimlico_getUserOperationGasPrice", [])
     
-    def send_user_operation(self, user_operation: UserOperation) -> Dict:
-        """Send UserOperation to bundler and return result"""
+    def send_user_operation(self, signed_user_op: SignedUserOperation) -> Dict:
+        """Send SignedUserOperation to bundler and return result"""
         logger.info("Sending UserOperation to bundler...")
-        
-        user_op_dict = convert_user_operation_to_pimlico_format(user_operation)
+
+        user_op_dict = convert_user_operation_to_pimlico_format(signed_user_op)
+        logger.info(f"Full UserOp to bundler: {user_op_dict}")
         result = self._make_bundler_request("eth_sendUserOperation", [user_op_dict, self.config.entry_point_address])
         
         if result:

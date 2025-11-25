@@ -5,6 +5,7 @@ Main TACo Smart Wallet service orchestration
 import logging
 from typing import Dict
 from web3 import Web3
+from nucypher_core import UserOperation
 
 from config import SmartAccountConfig
 from bundler import BundlerClient
@@ -65,31 +66,53 @@ class TacoSmartWalletService:
         if balance_wei < amount_wei:
             raise Exception(f"Insufficient balance: {balance_eth} ETH < {amount_eth} ETH")
 
-    def _optimize_gas_settings(self, user_operation):
-        """Update UserOperation with optimized gas settings from Pimlico"""
-        
+    def _optimize_gas_settings(self, op: UserOperation) -> UserOperation:
+        """Create new UserOperation with optimized gas settings from Pimlico"""
+        # Get current values from user_operation
+        max_fee_per_gas = op.max_fee_per_gas
+        max_priority_fee_per_gas = op.max_priority_fee_per_gas
+        call_gas_limit = op.call_gas_limit
+        verification_gas_limit = op.verification_gas_limit
+        pre_verification_gas = op.pre_verification_gas
+
         # Update gas prices
         gas_prices = self.bundler_client.get_user_operation_gas_price()
         if gas_prices and 'fast' in gas_prices:
             fast_prices = gas_prices['fast']
             if 'maxFeePerGas' in fast_prices:
-                user_operation.max_fee_per_gas = int(fast_prices['maxFeePerGas'], 16)
+                max_fee_per_gas = int(fast_prices['maxFeePerGas'], 16)
             if 'maxPriorityFeePerGas' in fast_prices:
-                user_operation.max_priority_fee_per_gas = int(fast_prices['maxPriorityFeePerGas'], 16)
-        
+                max_priority_fee_per_gas = int(fast_prices['maxPriorityFeePerGas'], 16)
+
         # Update gas limits with estimates
-        gas_estimates = self.bundler_client.estimate_user_operation_gas(user_operation)
+        gas_estimates = self.bundler_client.estimate_user_operation_gas(op)
         if gas_estimates:
             if 'callGasLimit' in gas_estimates:
-                user_operation.call_gas_limit = int(gas_estimates['callGasLimit'], 16)
+                call_gas_limit = int(gas_estimates['callGasLimit'], 16)
             if 'verificationGasLimit' in gas_estimates:
                 # Add 50% buffer for TACo threshold signature verification
                 base_gas = int(gas_estimates['verificationGasLimit'], 16)
-                user_operation.verification_gas_limit = int(base_gas * 1.5)
+                verification_gas_limit = int(base_gas * 1.5)
             if 'preVerificationGas' in gas_estimates:
-                user_operation.pre_verification_gas = int(gas_estimates['preVerificationGas'], 16)
-        
-        return user_operation
+                pre_verification_gas = int(gas_estimates['preVerificationGas'], 16)
+
+        # Create new UserOperation with optimized values (UserOperation is immutable)
+        return UserOperation(
+            sender=op.sender,
+            nonce=op.nonce,
+            factory=op.factory,
+            factory_data=op.factory_data,
+            call_data=op.call_data,
+            call_gas_limit=call_gas_limit,
+            verification_gas_limit=verification_gas_limit,
+            pre_verification_gas=pre_verification_gas,
+            max_fee_per_gas=max_fee_per_gas,
+            max_priority_fee_per_gas=max_priority_fee_per_gas,
+            paymaster=op.paymaster,
+            paymaster_verification_gas_limit=op.paymaster_verification_gas_limit,
+            paymaster_post_op_gas_limit=op.paymaster_post_op_gas_limit,
+            paymaster_data=op.paymaster_data,
+        )
 
     def _format_transfer_result(self, bundler_result: Dict, recipient: str, amount_eth: float) -> Dict:
         """Format the transfer result for consistent response"""

@@ -26,11 +26,12 @@ class SmartAccountConfig:
         self.rpc_url = "https://sepolia.base.org"
         self.chain_id = 84532
         self.entry_point_address = ENTRYPOINT_V07
-        self.smart_account_address = "0xBF151420A84A6Bb7b1213d8269a5F1fe43FC3276"
+        self.smart_account_address = "0x2a456304C6d79C91Ef8a02Bd87f85486d5d2d7E0"
         
         # TACo network configuration (via Porter gateway)
         self.porter_url = "https://porter-lynx.nucypher.io"
         self.cohort_id = int(os.environ.get('COHORT_ID'))
+        self.eth_endpoint = os.environ.get('DEMO_L1_PROVIDER_URI', 'https://sepolia.drpc.org')
         
         # Bundler configuration
         pimlico_api_key = os.environ.get('PIMLICO_API_KEY')
