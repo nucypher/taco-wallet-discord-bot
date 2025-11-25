@@ -51,9 +51,8 @@ class PorterSignatureService:
 
         # Get Discord context for Porter
         discord_context = self._get_discord_context()
-        message_hex = HexBytes(discord_context['message_hex']).hex()
         porter_context = Context(json.dumps({
-            ":message": message_hex,
+            ":timestamp": discord_context['timestamp'],
             ":signature": discord_context['signature'],
             ":discordPayload": discord_context["body"]
         }))

@@ -171,7 +171,6 @@ class DiscordInteractionHandler:
                            user_id: str, amount: str, recipient: str) -> None:
         """Set Discord context for TACo signatures"""
         discord_context = {
-            'message_hex': f"{timestamp}{body}".encode("utf-8").hex(),
             'signature': signature,
             'timestamp': timestamp,
             'command': 'tip',
@@ -195,7 +194,7 @@ class DiscordInteractionHandler:
             self.taco_service.send_eth(
                 user_id=user_id,
                 recipient=tip_data['recipient_address'],
-                amount_eth=float(tip_data['amount'])
+                amount_eth=float(tip_data['amount']),
             )
         )
     

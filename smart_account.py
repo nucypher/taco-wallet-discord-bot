@@ -53,8 +53,6 @@ class TacoSmartWalletService:
         # Return result
         return self._format_transfer_result(bundler_result, recipient, amount_eth)
 
-
-
     def _validate_balance(self, amount_wei: int, amount_eth: float) -> None:
         """Validate sufficient balance for transfer"""
         smart_account_checksum = self.web3.to_checksum_address(self.config.smart_account_address)
