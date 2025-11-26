@@ -1,5 +1,5 @@
-# Use Python 3.11 slim image as base
-FROM nucypher/rust-python:3.12.0
+# Use Python 3.12 with Rust image as base
+FROM nucypher/rust-python:3.12.11
 
 # set default user
 USER root
